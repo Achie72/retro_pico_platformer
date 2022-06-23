@@ -13,10 +13,12 @@ global = {
 		y = 0
 	},
 	gravity = 0.6,
+	pauseTime = 0,
 	camShake = false,
 	camShakeTime = 0,
 	offset = 0.1,
-	animation_queue = {}
+	animation_queue = {},
+	frame = 0
 }
 
 player = {
@@ -41,6 +43,7 @@ player = {
 	dashDuration = 2,
 	nextDash = 0,
 	nextFireball = 0,
+	powerUpTime = 0,
 	speedInv = 0,
 	status = "",
 	coins = 0,
@@ -65,6 +68,7 @@ cam = {
 }
 
 particles = {}
+fireballs = {}
 enemies = {}
 enemyProjectiles = {}
 foliage = {}
@@ -194,6 +198,14 @@ function add_particle(_x,_y,_maxAge,_color,_type,_goal,_velocity)
 		}
 	end
 
+	local vel = _velocity
+	if vel == nil then
+		vel = {
+			x = 0,
+			y = 0
+		}
+	end
+
 	local part = {
 		x = _x,
 		y = _y,
@@ -206,10 +218,7 @@ function add_particle(_x,_y,_maxAge,_color,_type,_goal,_velocity)
 			x = goal.x,
 			y = goal.y
 		},
-		velocity = {
-			x = _velocity.x,
-			y = _velocity.y
-		}
+		velocity = vel
 	}
 	add(particles,part)
 end
@@ -284,6 +293,17 @@ function add_pickup(_x,_y,_tpe)
 
 	add(pickups,pickup) 
 
+end
+
+function add_fireball(_x, _y, _speed)
+	local fireball = {
+		x = _x,
+		y = _y,
+		spr = 44,
+		speed = 1.5 * _speed,
+
+	}
+	add(fireballs,fireball)
 end
 
 function animate(object,starterFrame,frameCount,animSpeed,flipped,isPlayer)
@@ -495,8 +515,15 @@ function control_player()
 				end
 			end
 			if player.powerUp == 2 then
-				if time > player.nextFireball then
-					add_fireball(player.x, player.y, player.ax, player.isFlipped)
+				if time() > player.nextFireball then
+					local speed = 1
+					if player.isFlipped then
+						speed = -1
+					end
+					if not (player.ax == 0) then
+						speed = player.ax
+					end
+					add_fireball(player.x, player.y, speed, player.isFlipped)
 					player.nextFireball =  time() + 1
 				end
 			end
@@ -644,6 +671,11 @@ end
 
 -- 0: menu, 1: gameplay, 2: endscreen, [3: help, 4: settings]
 function _update ()
+	global.frame += 1
+	if global.frame > 30 then
+		global.frame = 0
+	end
+
 	if not (global.transition == true) then
 		if global.state == 0 then
 			update_menu()
@@ -670,14 +702,17 @@ function update_menu()
 end
 
 function update_game()
-	control_player()
-	update_particles()
-	update_enemies()
-	check_stomp()
-	update_scores()
-	--update_bouncers()
-	update_pickup()
+	if not (global.pauseTime > time()) then
+		control_player()
+		update_fireballs()
+		update_enemies()
+		check_stomp()
+		update_scores()
+		--update_bouncers()
+		update_pickup()
+	end
 
+	update_particles()
 	if player.life <= 0 then
 		-- set our state to endscreen
 
@@ -722,6 +757,13 @@ function update_particles()
 		end
 	end
 end
+
+function update_fireballs()
+	for fireball in all(fireballs) do
+		fireball.x += fireball.speed
+	end
+end
+
 
 function move_enemy(object,w,h)
 	next_wall = 0
@@ -789,7 +831,8 @@ end
 function update_enemies()
 	for enemy in all(enemies) do
 		for fireball in all(fireballs) do
-			if (collide_rect(to_rect(enemy,7,7),to_rect(fireball,7,7))) then
+			printh(fireball.x.." "..fireball.y)
+			if (collide_rect(to_rect(enemy.x, enemy.y, 7, 7),to_rect(fireball.x, fireball.y, 7, 7))) then
 				del(fireballs,fireball)
 				del(enemies,enemy)
 				return
@@ -808,7 +851,7 @@ end
 
 function player_enemy_collision()
 	for monster in all(enemies) do
-		if( (collide_rect(to_rect(monster,7,7),to_rect(player,7,7))) and (global.tick > player.nextinvc) ) then
+		if( (collide_rect(to_rect(monster.x, monster.y,7,7),to_rect(player.x, player.y,7,7))) and (global.tick > player.nextinvc) ) then
 			player.status = "hit"
 		end
 	end
@@ -857,6 +900,7 @@ function update_pickup()
 		if (pickup.deleteTime == nil) then
 			if collide_rect(to_rect(player.x, player.y, 8, 8), to_rect(pickup.x, pickup.y, 8,8 )) then
 				local score = 0
+				local p_col_map = {}
 				-- coin
 				if pickup.tpe == 0 then
 					player.coins += 1
@@ -866,20 +910,40 @@ function update_pickup()
 					player.score += score
 					sfx(2)
 				end
+				-- fire flower
 				if pickup.tpe == 1 then
 					player.powerUp = 2
 					pickup.animSpeed = pickup.animSpeed*2
 					pickup.deleteTime = time() + 0.1
 					score = 400
 					player.score += score
+					add_particle(pickup.x + 4 + rnd(5), pickup.y + 4+rnd(5), 15, {8, 7, 8, 2, 5}, 2, nil, nil)
+					add_particle(pickup.x + 4 +rnd(5), pickup.y + 4+rnd(5), 25, {8, 7, 8, 2, 5}, 2, nil, nil)
+					add_particle(pickup.x + 4 +rnd(5), pickup.y + 4+rnd(5), 30, {8, 7, 8, 2, 5}, 2, nil, nil)
+					global.camShake = true
+					global.camShakeTime = time() + 1
+					global.offset = 0.07
+					global.pauseTime = time() + 1
+					player.powerUpTime = time() + 1
 				end
+				-- volt flower
 				if pickup.tpe == 2 then
 					player.powerUp = 3
 					pickup.animSpeed = pickup.animSpeed*2
 					pickup.deleteTime = time() + 0.1
 					score = 400
 					player.score += score
+					--function add_particle(_x,_y,_maxAge,_color,_type,_goal,_velocity)
+					add_particle(pickup.x + 4 +rnd(5), pickup.y + 4+rnd(5), 15, {10,7,10,9,6}, 2, nil, nil)
+					add_particle(pickup.x + 4 +rnd(5), pickup.y + 4+rnd(5), 25, {10,7,10,9,6}, 2, nil, nil)
+					add_particle(pickup.x + 4 +rnd(5), pickup.y + 4+rnd(5), 30, {10,7,10,9,6}, 2, nil, nil)
+					global.camShake = true
+					global.camShakeTime = time() + 1
+					global.offset = 0.07
+					global.pauseTime = time() + 1
+					player.powerUpTime = time() + 1
 				end
+				-- egg
 				if pickup.tpe == 99 then
 					pickup.deleteTime = time() + 0.1
 					score = 2000
@@ -941,19 +1005,26 @@ function draw_game()
 	rectfill(-70,0,1200,300,12)
 	map()
 	rectfill(crect.x1,crect.y1,crect.x2,crect.y2, 6)
-	draw_particles()
+	draw_fireballs()
 	draw_enemies()
 	
-	if player.isStomping or (player.stompStun > time()) then
-		animate(player,76,1,10,player.isFlipped,true)
+	if player.powerUpTime > time() then
+		if (global.frame % 2 == 1) then
+			spr(64, player.x, player.y, 1, 1, player.isFlipped, false)
+		end
 	else
-		if (player.ax == 0) then
-			animate(player,66,4,10,player.isFlipped,true)
+		if player.isStomping or (player.stompStun > time()) then
+			animate(player,76,1,10,player.isFlipped,true)
 		else
-			animate(player,64,2,13,player.isFlipped,true)
+			if (player.ax == 0) then
+				animate(player,66,4,10,player.isFlipped,true)
+			else
+				animate(player,64,2,13,player.isFlipped,true)
+			end
 		end
 	end
 
+	draw_particles()
 
 	print(player.status, xPos, yPos-8, 8)
 	--draw_enemy_projectile()
@@ -974,7 +1045,7 @@ function draw_game()
 		y = 0
 	}
 	local position_maximum = {
-		x = 64*8-64,
+		x = 128*8-64,
 		y = 64+182
 	}
 	-- calculate out of buffer corrigations
@@ -1030,8 +1101,10 @@ function screen_shake(x, y)
   end
 end
 
-function update_camera()
-
+function draw_fireballs()
+	for fireball in all(fireballs) do
+		animate(fireball, 96, 4, 12, false, false)
+	end
 end
 
 function draw_end_screen()
@@ -1044,7 +1117,13 @@ function draw_particles()
 			if particle.tpe == 1 then
 				circfill( particle.x+sin(rnd()), particle.y+sin(rnd()), particle.lifeTime/10, particle.clr )
 			end
-			-- circl particle
+			-- circle particles
+			if particle.tpe == 2 then
+				if sin(rnd()) > 0.3 then
+					circ(particle.x+rnd(), particle.y+rnd(), particle.lifeTime, particle.clr)
+				end
+			-- circl fill particle
+			end
 			if particle.tpe == 3 then
 				circfill( particle.x+sin(rnd()), particle.y+sin(rnd()), particle.lifeTime/1, particle.clr )
 				--pset( particle.x+sin(rnd()), particle.y+sin(rnd()), particle.clr )
@@ -1261,7 +1340,7 @@ ffe666f00ffe66f0ffe666f0000677000006770000067700ffe666f000067700ffe666f0ffe666f0
 0303b3000303b3000303b3000303b300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 03b3b3b003b3b3b003b3b3b003b3b3b0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __gff__
-0001010101010000000000000000000000010101010100000000000000000000010101010101000000000000000000000301010101010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0001010101010000000000000000000001010101010100000000000000000000010101010101000000000000000000000301010101010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __map__
 f000000000000000000000000000000000000000000000000000000072000000007200000072000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000112525252525252525130000000000000000000000000000000000000000000000000000000000000000000000
