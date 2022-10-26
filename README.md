@@ -2,6 +2,8 @@
 
 A project to create, polish and publish a #pico8 #platformer game made to mimic the feel of the nes era games.  
 
+![alt tag](https://storage.ko-fi.com/cdn/useruploads/display/2affeb9a-ab71-4651-82a4-6bb6d29eb3d2_retrogre_7.gif)
+
 **[Project Table](https://github.com/Achie72/retro_pico_platformer/projects/1)**  
 **[Lates Blog about Project](https://github.com/Achie72/retro_pico_platformer/discussions/9)**
 
